@@ -1,17 +1,19 @@
 ﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Runtime.InteropServices;
 
 namespace Respawn.Graph
 {
     public class GraphBuilder
     {
-        public GraphBuilder(HashSet<Table> tables, HashSet<Relationship> relationships, bool includeSelfReferncing = false)
+        public GraphBuilder(HashSet<Table> tables, HashSet<Relationship> relationships, bool primitiveDb = false)
         {
-            FillRelationships(tables, relationships, includeSelfReferncing);
-
-            var result = FindAndRemoveCycles(tables);
+            FillRelationships(tables, relationships, primitiveDb);
+            (HashSet<Relationship> cyclicRelationships, Stack<Table> toDelete) result;
+            if (primitiveDb)
+                result = FindPrimitiveCycles(tables);
+            else
+                result = FindAndRemoveCycles(tables);
 
             ToDelete = new ReadOnlyCollection<Table>(result.toDelete.ToList());
 
@@ -21,14 +23,20 @@ namespace Respawn.Graph
         public ReadOnlyCollection<Table> ToDelete { get; }
         public ReadOnlyCollection<Relationship> CyclicalTableRelationships { get; }
 
-        private static void FillRelationships(HashSet<Table> tables, HashSet<Relationship> relationships, bool includeSelfReferncing)
+        private static void FillRelationships(HashSet<Table> tables, HashSet<Relationship> relationships, bool primitiveDb)
         {
             foreach (var relationship in relationships)
             {
-                var parentTable = tables.SingleOrDefault(t => t == relationship.ParentTable);
+                var parentTable = tables.SingleOrDefault(t => t == relationship.ParentTable);                
+                if (primitiveDb && parentTable == null)
+                {
+                    parentTable = relationship.ParentTable;
+                    parentTable.SeedColumn = "RemoveBeforeDeleteScript";
+                    tables.Add(parentTable);
+                }
                 var refTable = tables.SingleOrDefault(t => t == relationship.ReferencedTable);
                 bool ommit = false;
-                if (!includeSelfReferncing)
+                if (!primitiveDb)
                     ommit = parentTable == refTable;
                 if (parentTable != null && refTable != null && !ommit)
                 {
@@ -44,11 +52,41 @@ namespace Respawn.Graph
             var visiting = new HashSet<Table>();
             var visited = new HashSet<Table>();
             var cyclicRelationships = new HashSet<Relationship>();
-            var toDelete = new Stack<Table>();
+            var toDelete = new Stack<Table>();            
 
             foreach (var table in allTables)
             {
                 HasCycles(table, notVisited, visiting, visited, toDelete, cyclicRelationships);
+            }
+            return (cyclicRelationships, toDelete);
+        }
+
+        private static (HashSet<Relationship> cyclicRelationships, Stack<Table> toDelete)
+            FindPrimitiveCycles(HashSet<Table> allTables)
+        {
+            var notVisited = new HashSet<Table>(allTables);
+            var cyclicRelationships = new HashSet<Relationship>();
+            var toDelete = new Stack<Table>();
+            var toKill = new Stack<Table>();
+
+            foreach (var table in allTables)
+            {
+                if (table.Relationships.Count == 0)
+                    toDelete.Push(table);
+                else
+                {
+                    foreach (var relationship in table.Relationships)
+                    {
+                        cyclicRelationships.Add(relationship);
+                    }
+                }
+                notVisited.Remove(table);
+                if (table.SeedColumn == "RemoveBeforeDeleteScript")
+                    toKill.Push(table);
+            }
+            foreach (Table table in toKill)
+            {
+                allTables.Remove(table);
             }
 
             return (cyclicRelationships, toDelete);
