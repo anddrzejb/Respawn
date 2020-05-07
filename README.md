@@ -4,6 +4,10 @@ Respawn is a small utility to help in resetting test databases to a clean state.
 
 Detailed information on how to use it is on master branch of this fork. 
 
+# Respawn.Jet
+
+Has been created to tackle to problem of testing legacy applications using MS Access Jet technology.
+
 The Jet engine has a lot of limitations that forced a different approach to clearing up the tables. 
 The relationships have to be removed one by one and then reinstated after record deletion. Jet engine still observes integrity constraints that are defined within a table, event when a full table delete is issued.
 
@@ -45,6 +49,7 @@ Respawn.Jet after connecting to the database, will try to access system tables M
 CurrentProject.Connection.Execute "GRANT SELECT ON MSysObjects TO Admin;"
 CurrentProject.Connection.Execute "GRANT SELECT ON MSysRelationships TO Admin;"
 ```
+![Grant access to system tables](https://github.com/anddrzejb/Respawn/blob/JetEngineSupport/Info/VBE_Grant.PNG?raw=true)
 
 To connect to .mdb database use connection string format:
 ```
