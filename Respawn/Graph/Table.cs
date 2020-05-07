@@ -5,16 +5,19 @@ namespace Respawn.Graph
 {
     public class Table : IEquatable<Table>
     {
-        public Table(string schema, string name)
+        public Table(string schema, string name, string seedColumn = null)
         {
             Schema = schema;
             Name = name;
+            SeedColumn = seedColumn;
         }
 
         public string Schema { get; }
         public string Name { get; }
 
-        public HashSet<Relationship> Relationships { get; } = new HashSet<Relationship>();
+        public string SeedColumn { get; set;  }
+
+        public HashSet<Relationship> Relationships { get; } = new HashSet<Relationship>();        
 
         public string GetFullName(char quoteIdentifier) =>
             Schema == null

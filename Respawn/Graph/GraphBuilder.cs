@@ -1,14 +1,15 @@
 ﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Respawn.Graph
 {
     public class GraphBuilder
     {
-        public GraphBuilder(HashSet<Table> tables, HashSet<Relationship> relationships)
+        public GraphBuilder(HashSet<Table> tables, HashSet<Relationship> relationships, bool includeSelfReferncing = false)
         {
-            FillRelationships(tables, relationships);
+            FillRelationships(tables, relationships, includeSelfReferncing);
 
             var result = FindAndRemoveCycles(tables);
 
@@ -20,15 +21,18 @@ namespace Respawn.Graph
         public ReadOnlyCollection<Table> ToDelete { get; }
         public ReadOnlyCollection<Relationship> CyclicalTableRelationships { get; }
 
-        private static void FillRelationships(HashSet<Table> tables, HashSet<Relationship> relationships)
+        private static void FillRelationships(HashSet<Table> tables, HashSet<Relationship> relationships, bool includeSelfReferncing)
         {
             foreach (var relationship in relationships)
             {
                 var parentTable = tables.SingleOrDefault(t => t == relationship.ParentTable);
                 var refTable = tables.SingleOrDefault(t => t == relationship.ReferencedTable);
-                if (parentTable != null && refTable != null && parentTable != refTable)
+                bool ommit = false;
+                if (!includeSelfReferncing)
+                    ommit = parentTable == refTable;
+                if (parentTable != null && refTable != null && !ommit)
                 {
-                    parentTable.Relationships.Add(new Relationship(parentTable, refTable, relationship.Name));
+                    parentTable.Relationships.Add(new Relationship(parentTable, refTable, relationship.Name, relationship.ParentColumnName, relationship.ReferencedColumnName));
                 }
             }
         }

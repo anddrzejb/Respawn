@@ -83,15 +83,25 @@ namespace Respawn
 			using (var cmd = connection.CreateCommand())
 			{
 				cmd.CommandTimeout = CommandTimeout ?? cmd.CommandTimeout;
-				cmd.CommandText = DeleteSql;
 				cmd.Transaction = tx;
-				await cmd.ExecuteNonQueryAsync();
-				if (ReseedSql != null)
+				if (DbAdapter == Respawn.DbAdapter.Jet)
 				{
-					cmd.CommandText = ReseedSql;
-					await cmd.ExecuteNonQueryAsync();
+					foreach (var statement in DeleteSql.Remove(DeleteSql.Length-6).Split(new string[] { ";##;" }, StringSplitOptions.None))
+					{
+						cmd.CommandText = statement;
+						await cmd.ExecuteNonQueryAsync();
+					}
 				}
-
+				else
+				{
+					cmd.CommandText = DeleteSql;
+					await cmd.ExecuteNonQueryAsync();
+					if (ReseedSql != null)
+					{
+						cmd.CommandText = ReseedSql;
+						await cmd.ExecuteNonQueryAsync();
+					}
+				}
 				tx.Commit();
 			}
 		}
@@ -107,17 +117,41 @@ namespace Respawn
 
 			var allRelationships = await GetRelationships(connection);
 
-			_graphBuilder = new GraphBuilder(allTables, allRelationships);
+			_graphBuilder = new GraphBuilder(allTables, allRelationships, DbAdapter == Respawn.DbAdapter.Jet);
 
-			DeleteSql = DbAdapter.BuildDeleteCommandText(_graphBuilder);
 			if (WithReseed)
 			{
-				ReseedSql = DbAdapter.BuildReseedSql(_graphBuilder.ToDelete);
+				if (DbAdapter == Respawn.DbAdapter.Jet)
+					allTables = await GetTableSeeds(connection, allTables);
+				else
+					ReseedSql = DbAdapter.BuildReseedSql(_graphBuilder.ToDelete);
 			}
 			else
-			{
 				ReseedSql = null;
+			DeleteSql = DbAdapter.BuildDeleteCommandText(_graphBuilder);
+		}
+
+		private async Task<HashSet<Table>> GetTableSeeds(DbConnection connection, HashSet<Table> tables)
+		{
+			using (var cmd = connection.CreateCommand())
+			{
+				foreach (Table table in tables)
+				{
+					cmd.CommandText = DbAdapter.BuildFullColumnQueryCommandText(table);
+					using (var reader = await cmd.ExecuteReaderAsync())
+					{
+						for (int i = 0; i < reader.FieldCount; i++)
+						{
+							if (reader.GetDataTypeName(i) == DbAdapter.SeedColumnTypeName())
+							{
+								table.SeedColumn = reader.GetName(i);
+								break;
+							}
+						}
+					}
+				}
 			}
+			return tables;
 		}
 
 		private async Task<HashSet<Relationship>> GetRelationships(DbConnection connection)
@@ -128,7 +162,7 @@ namespace Respawn
 			using (var cmd = connection.CreateCommand())
 			{
 				cmd.CommandText = commandText;
-				using (var reader = await cmd.ExecuteReaderAsync())
+				using (DbDataReader reader = await cmd.ExecuteReaderAsync())
 				{
 					while (await reader.ReadAsync())
 					{
@@ -136,8 +170,11 @@ namespace Respawn
 							reader.IsDBNull(0) ? null : reader.GetString(0),
 							reader.GetString(1),
 							reader.IsDBNull(2) ? null : reader.GetString(2), 
-							reader.GetString(3), 
-							reader.GetString(4)));
+							reader.GetString(3),
+							reader.GetString(4),
+							reader.FieldCount >= 6 && !reader.IsDBNull(5) ? reader.GetString(5) : null ,
+							reader.FieldCount == 7 && !reader.IsDBNull(6) ? reader.GetString(6) : null 
+							));
 					}
 				}
 			}

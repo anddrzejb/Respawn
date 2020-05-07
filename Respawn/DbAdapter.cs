@@ -3,6 +3,7 @@
 namespace Respawn
 {
     using System.Collections.Generic;
+    using System;
     using System.Linq;
     using System.Text;
 
@@ -15,6 +16,8 @@ namespace Respawn
         string BuildReseedSql(IEnumerable<Table> tablesToDelete);
         string BuildTurnOffSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOffSystemVersioning);
         string BuildTurnOnSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOnSystemVersioning);
+        string BuildFullColumnQueryCommandText(Table table);
+        string SeedColumnTypeName();
     }
 
     public static class DbAdapter
@@ -24,6 +27,8 @@ namespace Respawn
         public static readonly IDbAdapter MySql = new MySqlAdapter();
         public static readonly IDbAdapter Oracle = new OracleDbAdapter();
         public static readonly IDbAdapter Informix = new InformixDbAdapter();
+        public static readonly IDbAdapter Jet = new JetDbAdapter();
+
 
         private class InformixDbAdapter : IDbAdapter
         {
@@ -130,6 +135,16 @@ namespace Respawn
             }
 
             public string BuildTurnOnSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOnSystemVersioning)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string BuildFullColumnQueryCommandText(Table table)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string SeedColumnTypeName()
             {
                 throw new System.NotImplementedException();
             }
@@ -317,6 +332,16 @@ WHERE t.temporal_type = 2";
                 }
                 return builder.ToString();
             }
+
+            public string BuildFullColumnQueryCommandText(Table table)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string SeedColumnTypeName()
+            {
+                throw new System.NotImplementedException();
+            }
         }
 
         private class PostgresDbAdapter : IDbAdapter
@@ -436,6 +461,16 @@ where 1=1";
             {
                 throw new System.NotImplementedException();
             }
+
+            public string BuildFullColumnQueryCommandText(Table table)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string SeedColumnTypeName()
+            {
+                throw new System.NotImplementedException();
+            }
         }
 
         private class MySqlAdapter : IDbAdapter
@@ -549,6 +584,16 @@ FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS";
             }
 
             public string BuildTurnOnSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOnSystemVersioning)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string BuildFullColumnQueryCommandText(Table table)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string SeedColumnTypeName()
             {
                 throw new System.NotImplementedException();
             }
@@ -669,6 +714,222 @@ from all_CONSTRAINTS     a
             public string BuildTurnOnSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOnSystemVersioning)
             {
                 throw new System.NotImplementedException();
+            }
+
+            public string BuildFullColumnQueryCommandText(Table table)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string SeedColumnTypeName()
+            {
+                throw new System.NotImplementedException();
+            }
+        }
+
+        private class JetDbAdapter : IDbAdapter
+        {
+            private const char QuoteCharacter = ' ';
+            private const string StatementSeprarator = ";##;";
+
+            public string BuildTableCommandText(Checkpoint checkpoint)
+            {
+                //t.Type =
+                //1   Table - Local Access Tables
+                //4   Table - Linked ODBC Tables
+                //6   Table - Linked Access Tables
+
+                string commandText = @"
+select NULL AS schemaName, t.name
+from MSysObjects AS t
+WHERE t.Type IN (1, 4, 6)
+  AND t.Flags NOT IN (-2147483648, -2147287040, -2146828288)
+  AND LEFT(t.Name, 4) <> 'MSys'  
+";
+
+                if (checkpoint.TablesToIgnore.Any())
+                {
+                    var args = string.Join(",", checkpoint.TablesToIgnore.Select(t => $"'{t}'"));
+
+                    commandText += " AND t.name NOT IN (" + args + ")" + System.Environment.NewLine;
+                }
+                if (checkpoint.TablesToInclude.Any())
+                {
+                    var args = string.Join(",", checkpoint.TablesToInclude.Select(t => $"'{t}'"));
+
+                    commandText += " AND t.name IN (" + args + ")" + System.Environment.NewLine;
+                }
+
+                //Jet does not have schema, but can have databases. 
+                //Convention here will be that for (table generated using https://www.tablesgenerator.com/text_tables):
+                //+------------------------+-------------------+
+                //|         Database       |     Schema name   |
+                //+------------------------+-------------------+
+                //| Current database file  | dbo               |
+                //+------------------------+-------------------+
+                //| Linked access database | full path to file |
+                //|                        | with extension    |
+                //+------------------------+-------------------+
+                //| Linked ODBC database   | linked database   |
+                //|                        | name              |
+                //+------------------------+-------------------+
+                if (checkpoint.SchemasToExclude.Any())
+                {
+                    var excludeList = checkpoint.SchemasToExclude.ToList();
+                    bool localDbFound = false;
+                    if (checkpoint.SchemasToInclude.Any(s => s.Equals("dbo")))
+                    {
+                        commandText += " AND t.Type <> 1" + Environment.NewLine;
+                        localDbFound = true;
+                        excludeList.Remove("dbo");
+                    }
+
+                    var args = $" { (localDbFound ? "AND" : "")} " +
+                        string.Join(" AND ", excludeList.Select(t => $"InStr(t.Connect, '{t}') = 0" + Environment.NewLine)) +
+                        " AND t.Database IN (" + string.Join(", ", excludeList.Select(t => $"'{t}'")) + ")" + Environment.NewLine;
+                    commandText += args;
+                }
+                else if (checkpoint.SchemasToInclude.Any())
+                {
+                    var inlcudeList = checkpoint.SchemasToInclude.ToList();                    
+                    bool localDbFound = false;
+                    if (checkpoint.SchemasToInclude.Any(s => s.Equals("dbo")))
+                    {
+                        commandText += " AND (t.Type = 1" + Environment.NewLine;
+                        localDbFound = true;
+                        inlcudeList.Remove("dbo");
+                    }
+                    
+                    var args = $" { (localDbFound ? "OR":"(")} " +
+                        string.Join(" OR ", inlcudeList.Select(t => $"InStr(t.Connect, '{t}') > 1" + Environment.NewLine)) +
+                        " OR t.Database IN (" +  string.Join(", ", inlcudeList.Select(t => $"'{t}'")) + ")" + Environment.NewLine; 
+
+                    commandText += args + ")";
+                }
+
+                return commandText;
+            }
+
+            public string BuildRelationshipCommandText(Checkpoint checkpoint)
+            {
+                string commandText = @"
+select
+   NULL AS fk_schema_name, szObject AS so_fk_name,   
+   NULL AS pk_schema_name, szReferencedObject AS so_pk_name,
+   szRelationShip AS sfk_name,
+   szColumn,   
+   szReferencedColumn
+from
+MSysRelationships AS R 
+  INNER JOIN MSysObjects AS t ON R.szReferencedObject = t.Name
+where LEFT(szObject, 4) <> 'MSys'  
+  AND LEFT(szReferencedObject, 4) <> 'MSys'  
+";
+
+                if (checkpoint.TablesToIgnore != null && checkpoint.TablesToIgnore.Any())
+                {
+                    var args = string.Join(",", checkpoint.TablesToIgnore.Select(t => $"'{t}'"));
+
+                    commandText += " AND szReferencedObject NOT IN (" + args + ")" + Environment.NewLine;
+                }
+                if (checkpoint.TablesToInclude != null && checkpoint.TablesToInclude.Any())
+                {
+                    var args = string.Join(",", checkpoint.TablesToInclude.Select(t => $"'{t}'"));
+
+                    commandText += " AND szReferencedObject IN (" + args + ")" + Environment.NewLine;
+                }
+
+                if (checkpoint.SchemasToExclude.Any())
+                {
+                    var excludeList = checkpoint.SchemasToExclude.ToList();
+                    bool localDbFound = false;
+                    if (checkpoint.SchemasToInclude.Any(s => s.Equals("dbo")))
+                    {
+                        commandText += " AND t.Type <> 1" + Environment.NewLine;
+                        localDbFound = true;
+                        excludeList.Remove("dbo");
+                    }
+
+                    var args = $" { (localDbFound ? "AND" : "")} " +
+                        string.Join(" AND ", excludeList.Select(t => $"InStr(t.Connect, '{t}') = 0" + Environment.NewLine)) +
+                        " AND t.Database IN (" + string.Join(", ", excludeList.Select(t => $"'{t}'")) + ")" + Environment.NewLine;
+                    commandText += args;
+                }
+                else if (checkpoint.SchemasToInclude.Any())
+                {
+                    var inlcudeList = checkpoint.SchemasToInclude.ToList();
+                    bool localDbFound = false;
+                    if (checkpoint.SchemasToInclude.Any(s => s.Equals("dbo")))
+                    {
+                        commandText += " AND (t.Type = 1" + Environment.NewLine;
+                        localDbFound = true;
+                        inlcudeList.Remove("dbo");
+                    }
+
+                    var args = $" { (localDbFound ? "OR" : "(")} " +
+                        string.Join(" OR ", inlcudeList.Select(t => $"InStr(t.Connect, '{t}') > 1" + Environment.NewLine)) +
+                        " OR t.Database IN (" + string.Join(", ", inlcudeList.Select(t => $"'{t}'")) + ")" + Environment.NewLine;
+
+                    commandText += args + ")";
+                }
+
+                return commandText;
+            }
+
+            public string BuildDeleteCommandText(GraphBuilder graph)
+            {
+                var builder = new StringBuilder();
+                
+
+                foreach (var rel in graph.CyclicalTableRelationships)
+                {
+                    builder.AppendLine($"ALTER TABLE {rel.ParentTable.GetFullName(QuoteCharacter)} DROP CONSTRAINT {rel.Name}{StatementSeprarator}");
+                }
+                foreach (var table in graph.ToDelete)
+                {
+                    builder.AppendLine($"DELETE FROM {table.GetFullName(QuoteCharacter)};##;");
+                    if (table.SeedColumn != null)
+                    {
+                        builder.AppendLine($"ALTER TABLE {table.GetFullName(QuoteCharacter)} ALTER COLUMN {table.SeedColumn} COUNTER(1,1){StatementSeprarator}");
+                    }
+                }
+                foreach (var rel in graph.CyclicalTableRelationships)
+                {
+                    builder.AppendLine($"ALTER TABLE {rel.ParentTable.GetFullName(QuoteCharacter)}" +
+                        $" ADD CONSTRAINT {rel.Name} FOREIGN KEY ({rel.ParentColumnName}) " +
+                        $" REFERENCES {rel.ReferencedTable.GetFullName(QuoteCharacter)}({rel.ReferencedColumnName}){StatementSeprarator}");
+                }
+                return builder.ToString();
+            }
+
+            public string BuildReseedSql(IEnumerable<Table> tablesToDelete)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string BuildTemporalTableCommandText(Checkpoint checkpoint)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string BuildTurnOffSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOffSystemVersioning)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string BuildTurnOnSystemVersioningCommandText(IEnumerable<TemporalTable> tablesToTurnOnSystemVersioning)
+            {
+                throw new System.NotImplementedException();
+            }
+
+            public string BuildFullColumnQueryCommandText(Table table)
+            {
+                return $"SELECT TOP 1 * FROM {table.GetFullName(QuoteCharacter)}";
+            }
+
+            public string SeedColumnTypeName()
+            {
+                return "COUNTER";
             }
         }
     }
