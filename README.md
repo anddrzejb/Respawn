@@ -45,6 +45,7 @@ Respawn.Jet after connecting to the database, will try to access system tables M
 CurrentProject.Connection.Execute "GRANT SELECT ON MSysObjects TO Admin;"
 CurrentProject.Connection.Execute "GRANT SELECT ON MSysRelationships TO Admin;"
 ```
+![Grant access to system tables](https://github.com/anddrzejb/Respawn/blob/JetEngineSupport/Info/VBE_Grant.PNG?raw=true)
 
 To connect to .mdb database use connection string format:
 ```
