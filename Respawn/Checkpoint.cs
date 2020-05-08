@@ -11,6 +11,7 @@ namespace Respawn
 	using System.Linq;
 	using System.Threading.Tasks;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities", Justification = "No queries are based on user input.")]
 	public class Checkpoint
 	{
 		private GraphBuilder _graphBuilder;
@@ -61,7 +62,7 @@ namespace Respawn
 				await ExecuteAlterSystemVersioningAsync(connection, turnOnVersioningCommandText);
 			}
 		}
-
+		
 		private async Task ExecuteAlterSystemVersioningAsync(DbConnection connection, string commandText)
 		{
 			using (var tx = connection.BeginTransaction())
@@ -76,7 +77,7 @@ namespace Respawn
 				tx.Commit();
 			}
 		}
-
+		
 		private async Task ExecuteDeleteSqlAsync(DbConnection connection)
 		{
 			using (var tx = connection.BeginTransaction())
