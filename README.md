@@ -59,3 +59,5 @@ To connect to .mdb database use connection string format:
 ### Limitations
 
 Respawn.Jet will tear down your integrity constraints and then rebuild them. However if your integrity constraints will be rebuild only with option `ON DELETE NO ACTION`. This is limitation of the Jet engine, that does not allow stating type of action when creating constraints using SQL through ODBC. I believe this should be fine for testing purposes, however if this is a requirement, then your tests need to be aware about this limitiation.
+
+If `WithReseed = true` then all the tables that are expected to be deleted and have `Autoincrement` column need to be closed (including MS Access datasheet view).
