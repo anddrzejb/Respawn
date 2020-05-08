@@ -61,3 +61,5 @@ To connect to .mdb database use connection string format:
 Respawn.Jet will tear down your integrity constraints and then rebuild them. However if your integrity constraints will be rebuild only with option `ON DELETE NO ACTION`. This is limitation of the Jet engine, that does not allow stating type of action when creating constraints using SQL through ODBC. I believe this should be fine for testing purposes, however if this is a requirement, then your tests need to be aware about this limitiation.
 
 If `WithReseed = true` then all the tables that are expected to be deleted and have `Autoincrement` column need to be closed (including MS Access datasheet view).
+
+During development it may happen that ODBC tracing is on (not so uncommon). However, tracing will terribly slow down the ODBC. For example a simple teardown of 3 tables (7 relationships) with trace was registering at over 10 000 miliseconds, but after trace shutdown, the teardown came down to around 50 miliseconds. These values can differ on different setups, but it should reflect the impact of ODBC tracing.
