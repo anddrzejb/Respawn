@@ -71,9 +71,7 @@ namespace Respawn.Graph
 
             foreach (var table in allTables)
             {
-                if (table.Relationships.Count == 0)
-                    toDelete.Push(table);
-                else
+                if (table.Relationships.Count > 0)
                 {
                     foreach (var relationship in table.Relationships)
                     {
@@ -83,6 +81,8 @@ namespace Respawn.Graph
                 notVisited.Remove(table);
                 if (table.SeedColumn == "RemoveBeforeDeleteScript")
                     toKill.Push(table);
+                else
+                    toDelete.Push(table);
             }
             foreach (Table table in toKill)
             {
