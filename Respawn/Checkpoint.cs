@@ -1,6 +1,4 @@
-﻿
-using System.Collections;
-using Respawn.Graph;
+﻿using Respawn.Graph;
 
 namespace Respawn
 {
@@ -62,7 +60,6 @@ namespace Respawn
 				await ExecuteAlterSystemVersioningAsync(connection, turnOnVersioningCommandText);
 			}
 		}
-		
 		private async Task ExecuteAlterSystemVersioningAsync(DbConnection connection, string commandText)
 		{
 			using (var tx = connection.BeginTransaction())
@@ -90,7 +87,22 @@ namespace Respawn
 					foreach (var statement in DeleteSql.Remove(DeleteSql.Length-6).Split(new string[] { ";##;" }, StringSplitOptions.None))
 					{
 						cmd.CommandText = statement;
-						await cmd.ExecuteNonQueryAsync();
+						try
+						{
+							await cmd.ExecuteNonQueryAsync();
+						}
+						catch (Exception ex) when (ex.GetType().Name == "OdbcException"
+										&& ex.Message.Contains("[Microsoft][ODBC Microsoft Access Driver] Invalid field data type.")
+										&& statement.Contains("COUNTER(1,1)"))
+						{
+							//Sometimes there is a problem with older databases to reseed. It is good enough to 
+							//change the seed to NUMBER and then back to COUNTER to solve this problem. If this happens,
+							//it should only be done first time and then the problem should no longer happen.
+							cmd.CommandText = statement.Replace("COUNTER(1,1)", "NUMBER");
+							await cmd.ExecuteNonQueryAsync();
+							cmd.CommandText = statement;
+							await cmd.ExecuteNonQueryAsync();
+						}
 					}
 				}
 				else
