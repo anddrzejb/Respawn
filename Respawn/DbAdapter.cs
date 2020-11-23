@@ -799,7 +799,7 @@ WHERE t.Type IN (1, 4, 6)
                         localDbFound = true;
                         inlcudeList.Remove("dbo");
                     }
-                    
+
                     var args = $" { (localDbFound ? "OR":"(")} " +
                         string.Join(" OR ", inlcudeList.Select(t => $"InStr(t.Connect, '{t}') > 1" + Environment.NewLine)) +
                         " OR t.Database IN (" +  string.Join(", ", inlcudeList.Select(t => $"'{t}'")) + ")" + Environment.NewLine; 
@@ -879,25 +879,24 @@ where LEFT(szObject, 4) <> 'MSys'
             public string BuildDeleteCommandText(GraphBuilder graph)
             {
                 var builder = new StringBuilder();
-                
 
                 foreach (var rel in graph.CyclicalTableRelationships)
                 {
-                    builder.AppendLine($"ALTER TABLE {rel.ParentTable.GetFullName(QuoteCharacter)} DROP CONSTRAINT {rel.Name}{StatementSeprarator}");
+                    builder.AppendLine($"ALTER TABLE [{rel.ParentTable.Name}] DROP CONSTRAINT [{rel.Name}]{StatementSeprarator}");
                 }
                 foreach (var table in graph.ToDelete)
                 {
-                    builder.AppendLine($"DELETE FROM {table.GetFullName(QuoteCharacter)};##;");
+                    builder.AppendLine($"DELETE FROM [{table.Name}];##;");
                     if (table.SeedColumn != null)
                     {
-                        builder.AppendLine($"ALTER TABLE {table.GetFullName(QuoteCharacter)} ALTER COLUMN {table.SeedColumn} COUNTER(1,1){StatementSeprarator}");
+                        builder.AppendLine($"ALTER TABLE [{table.Name}] ALTER COLUMN [{table.SeedColumn}] COUNTER(1,1){StatementSeprarator}");
                     }
                 }
                 foreach (var rel in graph.CyclicalTableRelationships)
                 {
-                    builder.AppendLine($"ALTER TABLE {rel.ParentTable.GetFullName(QuoteCharacter)}" +
-                        $" ADD CONSTRAINT {rel.Name} FOREIGN KEY ({rel.ParentColumnName}) " +
-                        $" REFERENCES {rel.ReferencedTable.GetFullName(QuoteCharacter)}({rel.ReferencedColumnName}){StatementSeprarator}");
+                    builder.AppendLine($"ALTER TABLE [{rel.ParentTable.Name}]" +
+                        $" ADD CONSTRAINT [{rel.Name}] FOREIGN KEY ([{rel.ParentColumnName}]) " +
+                        $" REFERENCES [{rel.ReferencedTable.Name}]([{rel.ReferencedColumnName}]){StatementSeprarator}");
                 }
                 return builder.ToString();
             }
@@ -924,7 +923,7 @@ where LEFT(szObject, 4) <> 'MSys'
 
             public string BuildFullColumnQueryCommandText(Table table)
             {
-                return $"SELECT TOP 1 * FROM {table.GetFullName(QuoteCharacter)}";
+                return $"SELECT TOP 1 * FROM [{table.Name}]";
             }
 
             public string SeedColumnTypeName()

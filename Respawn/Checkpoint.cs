@@ -74,7 +74,7 @@ namespace Respawn
 				tx.Commit();
 			}
 		}
-		
+
 		private async Task ExecuteDeleteSqlAsync(DbConnection connection)
 		{
 			using (var tx = connection.BeginTransaction())
@@ -84,12 +84,12 @@ namespace Respawn
 				cmd.Transaction = tx;
 				if (DbAdapter == Respawn.DbAdapter.Jet)
 				{
-					foreach (var statement in DeleteSql.Remove(DeleteSql.Length-6).Split(new string[] { ";##;" }, StringSplitOptions.None))
+					foreach (var statement in DeleteSql.Remove(DeleteSql.Length - 6).Split(new string[] { ";##;" }, StringSplitOptions.None))
 					{
 						cmd.CommandText = statement;
 						try
 						{
-							await cmd.ExecuteNonQueryAsync();
+							cmd.ExecuteNonQuery();
 						}
 						catch (Exception ex) when (ex.GetType().Name == "OdbcException"
 										&& ex.Message.Contains("[Microsoft][ODBC Microsoft Access Driver] Invalid field data type.")
@@ -99,16 +99,40 @@ namespace Respawn
 							//change the seed to NUMBER and then back to COUNTER to solve this problem. If this happens,
 							//it should only be done first time and then the problem should no longer happen.
 							cmd.CommandText = statement.Replace("COUNTER(1,1)", "NUMBER");
-							await cmd.ExecuteNonQueryAsync();
+							cmd.ExecuteNonQuery();
 							cmd.CommandText = statement;
-							await cmd.ExecuteNonQueryAsync();
+							cmd.ExecuteNonQuery();
+						}
+						catch (Exception ex) when (ex.GetType().Name == "OdbcException"
+										&& ex.Message.Contains("[Microsoft][ODBC Microsoft Access Driver] Record is deleted."))
+						{
+							new System.Threading.ManualResetEvent(false).WaitOne(100);
+							cmd.ExecuteNonQuery();
 						}
 					}
 				}
 				else
 				{
 					cmd.CommandText = DeleteSql;
-					await cmd.ExecuteNonQueryAsync();
+					int deadlockRetryCounter = 0;
+					while (deadlockRetryCounter < 3 && deadlockRetryCounter >= 0)
+					{
+						try
+						{
+							await cmd.ExecuteNonQueryAsync();
+							deadlockRetryCounter = -1;
+						}
+						//SQL Server error specific (deadlock)
+						catch (SqlException ex) when (ex.Number == 1205 && DbAdapter == Respawn.DbAdapter.SqlServer)
+						{
+							deadlockRetryCounter++;
+						}
+						catch (Exception)
+						{
+							deadlockRetryCounter = 5;
+							throw;
+						}
+					}
 					if (ReseedSql != null)
 					{
 						cmd.CommandText = ReseedSql;
